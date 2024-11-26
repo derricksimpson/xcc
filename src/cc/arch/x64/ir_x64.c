@@ -612,9 +612,11 @@ static void ei_cond(IR *ir) {
 }
 
 static void ei_jmp(IR *ir) {
+  int cond = ir->jmp.cond;
+  assert(cond != COND_NONE);
+
   const char *label = fmt_name(ir->jmp.bb->label);
   VReg *opr1 = ir->opr1, *opr2 = ir->opr2;
-  int cond = ir->jmp.cond;
   // On x64, flag for comparing flonum is same as unsigned.
   if (cond & COND_FLONUM) {
     cond &= COND_MASK;
@@ -1100,12 +1102,12 @@ void emit_bb_irs(BBContainer *bbcon) {
     [IR_MOV] = ei_mov, [IR_KEEP] = ei_keep, [IR_ASM] = ei_asm,
   };
 
-  for (int i = 0; i < bbcon->bbs->len; ++i) {
-    BB *bb = bbcon->bbs->data[i];
+  for (int i = 0; i < bbcon->len; ++i) {
+    BB *bb = bbcon->data[i];
 #ifndef NDEBUG
     // Check BB connection.
-    if (i < bbcon->bbs->len - 1) {
-      BB *nbb = bbcon->bbs->data[i + 1];
+    if (i < bbcon->len - 1) {
+      BB *nbb = bbcon->data[i + 1];
       UNUSED(nbb);
       assert(bb->next == nbb);
     } else {
@@ -1139,8 +1141,8 @@ static void insert_const_mov(VReg **pvreg, RegAlloc *ra, Vector *irs, int i) {
 // Rewrite `A = B op C` to `A = B; A = A op C`.
 static void convert_3to2(FuncBackend *fnbe) {
   BBContainer *bbcon = fnbe->bbcon;
-  for (int i = 0; i < bbcon->bbs->len; ++i) {
-    BB *bb = bbcon->bbs->data[i];
+  for (int i = 0; i < bbcon->len; ++i) {
+    BB *bb = bbcon->data[i];
     Vector *irs = bb->irs;
     for (int j = 0; j < irs->len; ++j) {
       IR *ir = irs->data[j];
@@ -1186,8 +1188,8 @@ void tweak_irs(FuncBackend *fnbe) {
 
   BBContainer *bbcon = fnbe->bbcon;
   RegAlloc *ra = fnbe->ra;
-  for (int i = 0; i < bbcon->bbs->len; ++i) {
-    BB *bb = bbcon->bbs->data[i];
+  for (int i = 0; i < bbcon->len; ++i) {
+    BB *bb = bbcon->data[i];
     Vector *irs = bb->irs;
     for (int j = 0; j < irs->len; ++j) {
       IR *ir = irs->data[j];

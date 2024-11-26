@@ -26,6 +26,9 @@ jobs:
     - name: test xcc gen2
       run: make test-gen2
 
+    - name: test ssa
+      run: make test-ssa
+
     - name: setup
       run: |
         npm ci

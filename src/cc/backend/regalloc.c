@@ -17,20 +17,23 @@ RegAlloc *new_reg_alloc(const RegAllocSettings *settings) {
   ra->settings = settings;
   ra->vregs = new_vector();
   ra->consts = new_vector();
+  ra->vreg_table = NULL;
   ra->intervals = NULL;
   ra->sorted_intervals = NULL;
   ra->used_reg_bits = 0;
   ra->used_freg_bits = 0;
   ra->flag = 0;
+  ra->original_vreg_count = 0;
   return ra;
 }
 
 inline VReg *alloc_vreg(enum VRegSize vsize, int vflag) {
   VReg *vreg = malloc_or_die(sizeof(*vreg));
-  vreg->virt = -1;
+  vreg->virt = vreg->orig_virt = -1;
   vreg->phys = -1;
   vreg->vsize = vsize;
   vreg->flag = vflag;
+  vreg->version = 0;
   vreg->reg_param_index = -1;
   vreg->frame.offset = 0;
   return vreg;
@@ -39,11 +42,18 @@ inline VReg *alloc_vreg(enum VRegSize vsize, int vflag) {
 VReg *reg_alloc_spawn(RegAlloc *ra, enum VRegSize vsize, int vflag) {
   VReg *vreg = alloc_vreg(vsize, vflag);
   if (!(vflag & VRF_CONST)) {
-    vreg->virt = ra->vregs->len;
+    vreg->virt = vreg->orig_virt = ra->vregs->len;
     vec_push(ra->vregs, vreg);
   } else {
     vec_push(ra->consts, vreg);
   }
+  return vreg;
+}
+
+VReg *reg_alloc_with_version(RegAlloc *ra, VReg *parent, int version) {
+  VReg *vreg = reg_alloc_spawn(ra, parent->vsize, parent->flag & VRF_MASK);
+  vreg->orig_virt = parent->virt;
+  vreg->version = version;
   return vreg;
 }
 
@@ -160,8 +170,8 @@ static void check_live_interval(BBContainer *bbcon, int vreg_count, LiveInterval
   }
 
   int nip = 0;
-  for (int i = 0; i < bbcon->bbs->len; ++i) {
-    BB *bb = bbcon->bbs->data[i];
+  for (int i = 0; i < bbcon->len; ++i) {
+    BB *bb = bbcon->data[i];
 
     set_inout_interval(bb->in_regs, intervals, nip);
 
@@ -208,8 +218,8 @@ static void detect_live_interval_flags(RegAlloc *ra, BBContainer *bbcon, int vre
   const RegAllocSettings *settings = ra->settings;
   int nip = 0;
   unsigned long iargset = 0, fargset = 0;
-  for (int i = 0; i < bbcon->bbs->len; ++i) {
-    BB *bb = bbcon->bbs->data[i];
+  for (int i = 0; i < bbcon->len; ++i) {
+    BB *bb = bbcon->data[i];
     for (int j = 0; j < bb->irs->len; ++j, ++nip) {
       IR *ir = bb->irs->data[j];
       if (settings->detect_extra_occupied != NULL) {
@@ -384,8 +394,8 @@ static int insert_load_store_spilled_irs(RegAlloc *ra, BBContainer *bbcon) {
   };
 
   int inserted = 0;
-  for (int i = 0; i < bbcon->bbs->len; ++i) {
-    BB *bb = bbcon->bbs->data[i];
+  for (int i = 0; i < bbcon->len; ++i) {
+    BB *bb = bbcon->data[i];
     Vector *irs = bb->irs;
     for (int j = 0; j < irs->len; ++j) {
       IR *ir = irs->data[j];

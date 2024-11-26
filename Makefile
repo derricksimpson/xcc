@@ -76,12 +76,6 @@ CC:=./$(HOST)xcc
 CFLAGS+=-DSELF_HOSTING
 endif
 
-ifeq ("$(ARCHTYPE)", "aarch64")
-  ifneq ("$(UNAME)", "Darwin")
-	TEST_OPT:=NO_LINK_TEST=1
-  endif
-endif
-
 EXES:=xcc cc1 cpp as ld
 
 xcc_SRCS:=$(wildcard $(XCC_DIR)/*.c) \
@@ -138,7 +132,7 @@ $(foreach D, $(XCC_SRC_DIRS), $(eval $(call DEFINE_OBJ_TARGET,$(D))))
 
 .PHONY: test
 test:	all
-	$(MAKE) -C tests clean && $(MAKE) $(TEST_OPT) -C tests all
+	$(MAKE) -C tests clean && $(MAKE) -C tests all
 	$(MAKE) test-libs
 
 .PHONY: test-all
@@ -165,6 +159,11 @@ test-riscv64:	cross-compile-riscv64
 .PHONY: cross-compile-riscv64
 cross-compile-riscv64:
 	$(MAKE) ARCHTYPE:=riscv64 PLATFORM:=posix HOST_CC_PREFIX=$(shell ./tool/find-riscv-toolchain)-
+
+# Test SSA.
+.PHONY: test-ssa
+test-ssa:	all
+	make -C tests clean && make XCC="../xcc --apply-ssa" -C tests cc-tests test-examples
 
 ### Library
 
@@ -332,8 +331,8 @@ dump_ir_SRCS:=$(DEBUG_DIR)/dump_ir.c $(CC1_FE_DIR)/parser_expr.c $(CC1_FE_DIR)/p
 	$(CC1_FE_DIR)/fe_misc.c $(CC1_FE_DIR)/initializer.c $(CC1_FE_DIR)/lexer.c $(CC1_FE_DIR)/type.c \
 	$(CC1_FE_DIR)/ast.c $(CC1_FE_DIR)/var.c $(CC1_FE_DIR)/cc_misc.c \
 	$(CC1_BE_DIR)/codegen_expr.c $(CC1_BE_DIR)/codegen.c $(CC1_BE_DIR)/ir.c \
-	$(CC1_BE_DIR)/optimize.c $(CC1_BE_DIR)/regalloc.c $(CC1_BE_DIR)/emit_util.c \
-	$(CC1_DIR)/builtin.c \
+	$(CC1_BE_DIR)/optimize.c $(CC1_BE_DIR)/ssa.c $(CC1_BE_DIR)/regalloc.c \
+	$(CC1_BE_DIR)/emit_util.c $(CC1_DIR)/builtin.c \
 	$(CC1_ARCH_DIR)/emit_code.c $(CC1_ARCH_DIR)/ir_$(ARCHTYPE).c \
 	$(UTIL_DIR)/util.c $(UTIL_DIR)/table.c
 

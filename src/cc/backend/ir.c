@@ -11,6 +11,13 @@
 static const enum VRegSize vtVoidPtr = VRegSize8;
 static const enum VRegSize vtBool    = VRegSize4;
 
+Phi *new_phi(VReg *dst, Vector *params) {
+  Phi *phi = malloc_or_die(sizeof(*phi));
+  phi->dst = dst;
+  phi->params = params;
+  return phi;
+}
+
 enum ConditionKind swap_cond(enum ConditionKind cond) {
   assert((cond & ~COND_MASK) == 0);
   if (cond >= COND_LT)
@@ -374,26 +381,24 @@ BB *new_bb(void) {
   bb->in_regs = new_vector();
   bb->out_regs = new_vector();
   bb->assigned_regs = new_vector();
+  bb->phis = NULL;
   return bb;
 }
 
 BBContainer *new_func_blocks(void) {
-  BBContainer *bbcon = malloc_or_die(sizeof(*bbcon));
-  bbcon->bbs = new_vector();
-  return bbcon;
+  return new_vector();
 }
 
 //
 
 void detect_from_bbs(BBContainer *bbcon) {
-  Vector *bbs = bbcon->bbs;
-  int count = bbs->len;
+  int count = bbcon->len;
   if (count <= 0)
     return;
 
   // Clear all from_bbs
   for (int i = 0; i < count; ++i) {
-    BB *bb = bbs->data[i];
+    BB *bb = bbcon->data[i];
     vec_clear(bb->from_bbs);
   }
 
@@ -401,7 +406,7 @@ void detect_from_bbs(BBContainer *bbcon) {
   table_init(&checked);
   Vector unchecked;
   vec_init(&unchecked);
-  vec_push(&unchecked, bbs->data[0]);
+  vec_push(&unchecked, bbcon->data[0]);
 
   do {
     BB *bb = vec_pop(&unchecked);
@@ -467,13 +472,29 @@ static void propagate_out_regs(VReg *vreg, Vector *froms) {
 
 void analyze_reg_flow(BBContainer *bbcon) {
   // Enumerate in and assigned regsiters for each BB.
-  for (int i = 0; i < bbcon->bbs->len; ++i) {
-    BB *bb = bbcon->bbs->data[i];
+  for (int i = 0; i < bbcon->len; ++i) {
+    BB *bb = bbcon->data[i];
     Vector *in_regs = bb->in_regs;
     Vector *assigned_regs = bb->assigned_regs;
     vec_clear(in_regs);
     vec_clear(assigned_regs);
     vec_clear(bb->out_regs);
+
+    Vector *phis = bb->phis;
+    if (phis != NULL) {
+      for (int j = 0; j < phis->len; ++j) {
+        Phi *phi = phis->data[j];
+        for (int k = 0; k < phi->params->len; ++k) {
+          VReg *vreg = phi->params->data[k];
+          assert(vreg != NULL);
+          if (vreg->flag & VRF_CONST)
+            continue;
+          assert(!vec_contains(assigned_regs, vreg));
+          insert_vreg_into_vec(in_regs, vreg);
+        }
+        insert_vreg_into_vec(assigned_regs, phi->dst);
+      }
+    }
 
     Vector *irs = bb->irs;
     for (int j = 0; j < irs->len; ++j) {
@@ -493,8 +514,8 @@ void analyze_reg_flow(BBContainer *bbcon) {
 
   // Propagate in_regs to out_regs to from_bbs recursively.
   Vector *dstbbs = new_vector();
-  for (int i = bbcon->bbs->len; --i >= 0; ) {
-    BB *bb = bbcon->bbs->data[i];
+  for (int i = bbcon->len; --i >= 0; ) {
+    BB *bb = bbcon->data[i];
     Vector *from_bbs = bb->from_bbs;
     Vector *in_regs = bb->in_regs;
     for (int j = 0; j < in_regs->len; ++j) {
